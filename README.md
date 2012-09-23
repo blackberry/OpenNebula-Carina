@@ -1,14 +1,14 @@
 Introduction
 ------------
 
-The OpenNebula Environment Manager (oneenv) is a component to handle the 
+The Carina Environment Manager is a component to handle the 
 deployment of interconnected multi-VM application services on top of the 
 OpenNebula IaaS platform. It supports the automated creation and run-time 
-scaling of multi-VM application environments.  It leverages the OpenNebula 
-contextualization framework to setup clusters of VMs in a master-slave 
-configuration or a set of workers with an IP load-balancer in front. Policies 
-can be defined to control how VMs are added or removed based on manual, time 
-of day, or application load-based triggers.
+scaling of multi-VM application environments according to policies.  It 
+leverages the OpenNebula contextualization framework to setup clusters of VMs 
+in a master-slave configuration or a set of workers with an IP load-balancer 
+in front. Policies can be defined to control how VMs are added or removed 
+based on manual, time of day, or application load-based triggers.
 
 The system will ensure that an appropriate number of VMs are started even
 in the presence of hypervisor or data center failures to meet application
@@ -41,6 +41,7 @@ Key Features
 
 Usage
 -----
+`
 Usage: oneenv [options]
     -c, --create STRING              Create environment from configuration
     -r, --remove STRING              Remove environment and delete VMs
@@ -57,6 +58,6 @@ Usage: oneenv [options]
     -j, --json                       Display verbose JSON output
     -o, --configs                    List all environment configs
     -e, --envs                       List all environments
-
+`
 
 
