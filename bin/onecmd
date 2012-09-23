@@ -1,0 +1,79 @@
+#!/usr/bin/env ruby
+#=======================================================================================
+#
+#        $File: //depot/main/cloud/iaas/compute/software/opennebula/3.0.0/package/root/src/ozones/Client/bin/onecmd $
+#      $Author: andscott $
+#      $Change: 5156429 $
+#    $DateTime: 2012/04/10 10:35:01 $
+#    $Revision: #5 $
+#
+#=======================================================================================
+
+require 'optparse'
+require 'tempfile'
+require ENV["HOME"] + "/config.rb"
+
+endpoint = ""
+all      = false
+list     = false
+xmlout   = false
+OptionParser.new do |opts|
+	opts.on("-e", "--endpoint STRING", String, "ENDPOINT") do |opt|
+		endpoint = opt
+	end
+	opts.on("-a", "--all", "All ENDPOINTs") do
+		all = true
+	end
+	opts.on("-l", "--list", "List configured ENDPOINTs") do
+		list = true
+	end
+  opts.on("-x", "--xml", "XML output") do
+    xmlout = true
+  end
+	begin
+		opts.parse!(ARGV)
+	end
+end
+
+if list
+	printf "ENDPOINTs:"
+	ENDPOINT.each_key do |e|
+		printf " " + e
+	end
+	printf "\n"
+	exit
+end
+
+if all and not endpoint.empty?
+	STDERR.puts "ERROR: -e and -a are mutually exclusive"
+	exit(-1)
+end
+
+if not all and endpoint.empty?
+	STDERR.puts "ERROR: endpoint not specificed"
+	exit(-1)
+end
+
+if not all and not ENDPOINT.has_key?(endpoint)
+	STDERR.puts "ERROR: endpoint does not exist"
+	exit(-1)
+end
+
+def onecmd (e, args)
+	file = Tempfile.new('.one_auth', ENV["HOME"])
+	file.puts(ENDPOINT[e][:oneauth])
+	file.close
+	system("export ONE_AUTH=#{file.path} ; export ONE_XMLRPC=#{ENDPOINT[e][:proxy]} ; #{ARGV.join(" ")}" + args)
+	file.unlink
+end
+
+args = xmlout ? " -x" : ""
+if all
+	ENDPOINT.each_key do |e|
+	puts "|-- start #{e} ---------------------------------------------------------------------|"
+		onecmd(e, args)
+	puts "|-- end #{e} -----------------------------------------------------------------------|"
+	end
+else
+	onecmd(endpoint, args)
+end

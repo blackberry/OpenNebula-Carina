@@ -1,0 +1,400 @@
+#!/usr/bin/env ruby
+# -------------------------------------------------------------------------- #
+# Copyright 2011-2012, Research In Motion Limited                            #
+#                                                                            #
+# Licensed under the Apache License, Version 2.0 (the "License"); you may    #
+# not use this file except in compliance with the License. You may obtain    #
+# a copy of the License at                                                   #
+#                                                                            #
+# http://www.apache.org/licenses/LICENSE-2.0                                 #
+#                                                                            #
+# Unless required by applicable law or agreed to in writing, software        #
+# distributed under the License is distributed on an "AS IS" BASIS,          #
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.   #
+# See the License for the specific language governing permissions and        #
+# limitations under the License.                                             #
+#--------------------------------------------------------------------------- #
+
+require 'rubygems'
+require 'sinatra'
+require 'json'
+require 'mysql'
+require 'logger'
+require 'redis'
+require 'socket'
+require 'time'
+require '../lib/time_window.rb'
+require '../lib/policy_manager.rb'
+require '../lib/job_manager.rb'
+require '../lib/gs_message.rb'
+require '../lib/gs_proxy.rb'
+require '../lib/env_manager.rb'
+require '../lib/plugin_manager.rb'
+
+load ENV["HOME"] + "/config.rb"
+
+class Auth
+     def self.checkAuthInfo(params)
+        ep = params[:endpoint]
+        authinfo = params[:authinfo]
+        $Logger.debug  "Checking ep=#{ep} authinfo=#{authinfo}"
+        if ENDPOINT[ep] == nil 
+            $Logger.debug "Endpoint #{ep} not found"
+            return false
+        end
+        if  ENDPOINT[ep][:oneauth] == nil 
+            $Logger.debug "Endpoint #{ep} has no oneauth info"
+            return false
+        end
+        if ENDPOINT[ep][:oneauth] != authinfo
+            $Logger.debug "Endpoint not found or no oneauth field for endpoint"
+            return false
+        end
+        return true
+     end
+end
+
+class Params 
+     def self.readFile(file)
+         File.readlines(file).each do |line|
+             next if /\S/ !~ line || line.match(/^#/)
+             values = line.split("=")
+             lines2 = values[1].split.join("\n")
+             ENV[values[0]] = lines2
+         end
+     end
+end
+
+chldhandler = trap("CHLD") {
+    #STDERR.puts("Trapping signal CHLD")
+    begin
+        # tmppid, status = Process.wait2(cmdpid)
+        tmppid = Process.wait
+        status = $?
+        cmd_exitstatus = status.exitstatus
+        $jobManager.reportDone(tmppid, cmd_exitstatus)
+        #STDERR.puts("Process::Status => " + status.inspect)
+        #STDERR.puts("exitstatus => " + cmd_exitstatus.inspect)
+        if ! status.exited?
+            #raise "ARGH!  The child has not exited yet!"
+            puts "ARGH!  The child has not exited yet!"
+        end
+    rescue Errno::ECHILD => e
+        #STDERR.puts("Command failed - probably ok?  #{e.inspect}")
+        # bah, ignore it, just means a command failed
+    end
+}
+
+
+if File.exists?("../etc/system.conf")
+    Params.readFile("../etc/system.conf")
+end
+
+if File.exists?("../etc/oneenv.conf")
+    conffile = "../etc/oneenv.conf"
+else
+    conffile = ENV["HOME"] + "/conf/oneenv.conf"
+end
+Params.readFile(conffile)
+
+
+$port =  ENV["CARINA_PORT"]
+set :bind, '0.0.0.0'
+set :port, $port
+$useGlobalScheduler = true
+if ENV["USE_GLOBAL_SCHEDULER"] != nil
+    $useGlobalScheduler = ENV["USE_GLOBAL_SCHEDULER"]
+    $useGlobalScheduler == "true" ?  $useGlobalScheduler = true: $useGlobalScheduler = false
+end
+
+$service=ENV["SERVICE_NAME"]
+$zone=ENV["ZONE"]
+# Determine if we are going to call ONE to get the load of all the VMs.
+# Only one oneenvd per host should be configured for this
+$vmInfoLoader = false
+if ENV["LOAD_VM_INFO"] != nil
+    $vmInfoLoader = ENV["LOAD_VM_INFO"]
+    $vmInfoLoader  == "true" ?  $vmInfoLoader = true: $vmInfoLoader = false
+end
+
+$TMPVMLOADFILE = "/tmp/onevmload"
+$LOGDIR = ENV["HOME"] + "/logs/"
+$WORKDIR = ENV["HOME"] + "/work/"
+$PLUGINDIR = ENV["HOME"] + "/plugins/"
+$ENVLOGFILE  = $LOGDIR + "env.log" 
+$ONEENVDLOGFILE = $LOGDIR + "/oneenvd.log"
+if File.exists?("./svccontroller.sh")
+puts "svccontroller found in cwd"
+   $SVCBIN  = Dir.pwd + "/svccontroller.sh"
+puts "SVCBIN=#{$SVCBIN}"
+else
+   $SVCBIN  = ENV["ONE_LOCATION"] + "/opennebula-carina/bin/svccontroller.sh"
+end
+
+$VMTABLE="vm_pool_ext"
+$APPENVTABLE="app_environment"
+$JOBSTABLE="jobs"
+$SVCTABLE="service"
+
+
+Thread.abort_on_exception = true
+$Logger = Logger.new($ONEENVDLOGFILE)
+if ENV["LOG_LEVEL"] != nil
+   $Logger.level = Logger::DEBUG
+else
+   $Logger.level = ENV["LOG_LEVEL"]
+end
+con = Mysql.new(ENV["DB_HOST"],'root',ENV["DB_PASS"],'opennebula') 
+$jobManager=JobManager.new(con)
+$envManager=EnvManager.new(con)
+$configList=EnvConfigs.new(con)
+if ENV["SERVICE_NAME"] == nil
+    $Logger.fatal "Service name not defined"
+    exit
+end
+
+$SVCID = $envManager.getServiceId(ENV["SERVICE_NAME"])
+
+if $useGlobalScheduler == true
+    $gsProxy = GSchedProxy.new
+end
+$configList.load()
+$jobManager.load()
+lock = Mutex.new
+
+$pluginManager = PluginManager.new
+$pluginManager.load()
+policyManager=PolicyManager.new($envManager, $pluginManager,lock)
+$Logger.debug "Creating thread for PolicyManager"
+Thread.new(){
+   policyManager.run
+}
+
+Thread.new() {
+    $jobManager.run(lock)
+}
+if $useGlobalScheduler == true
+    Thread.new() {
+         $gsProxy.run(lock)
+    }
+    # Have to register after the proxy run() is executed so that we
+    # start subscribing. Otherwise we won't receive the INITIALIZE message
+    # when we REGISTER
+    sleep(2)
+    $gsProxy.register()
+end
+
+get '/configs' do
+     list = $configList.getList()
+     JSON.generate(list)
+end
+
+get '/logs/:logname' do
+     fileout = ""
+     if params[:logname] == "oneenvd"
+         logfile=$ONEENVDLOGFILE
+     else
+         logfile=$LOGDIR + "/#{params[:logname]}"
+     end
+     if File.exists?(logfile)
+         fileout = `tail -n 500 #{logfile}`
+     else
+         fileout = "File not found"
+     end
+     fileout
+end
+
+post '/configs' do
+      type = params[:type]
+      name = params[:name]
+      if type == "config" 
+          # Handle config.rb update
+          # Save to received config.rb to temp file first
+          fname = ENV["HOME"] + "/config.rb"
+          File.open(fname + ".tmp.rb", "w") do |f|
+             f.write(params[:upload][:tempfile].read)
+          end
+          if $configList.validate(fname + ".tmp.rb") == false
+               msg = "Invalid config.rb for this service"
+               # Reset back to the old configuration
+               $configList.load()
+          else
+              # Backup the old config.rb
+              if File.exists?(fname) == true
+                  File.rename(fname, fname + ".bak")
+              end
+              File.rename(fname + ".tmp.rb", fname)
+              $configList.load()
+              $configList.insertindb()
+              msg = "OK"
+          end
+       elsif  type == "plugin"
+          fname = ENV["HOME"] + "/plugins/" + name
+          if File.exists?(fname) == true
+              File.rename(fname, fname + ".bak")
+          end
+          File.open(fname, "w") do |f|
+              f.write(params[:upload][:tempfile].read)
+          end
+          $pluginManager.loadPlugin(fname)
+       else
+          # VM template file
+          fname = ENV["HOME"] + "/vm/" + name
+          if File.exists?(fname) == true
+              File.rename(fname, fname + ".bak")
+          end
+          File.open(fname, "w") do |f|
+              f.write(params[:upload][:tempfile].read)
+          end
+          msg = "OK"
+       end
+       msg 
+end
+
+
+post '/configs/:configname' do
+    envid = nil
+    jobid = nil 
+    errmsg = nil
+
+    if Auth.checkAuthInfo(params) == false
+       errmsg = "Not authorized to use this service" 
+    end
+   
+    if errmsg == nil 
+        lock.synchronize {
+            config = $configList.getbyname(params[:configname])
+            if config == nil
+               errmsg = "Invalid environment configuration"     
+            elsif config.type == "group"
+               # For environment group we launch first environment and
+               # queue up jobs for launching dependent environments
+                members = ENVIRONMENT[config.name][:members]
+                if members == nil || members[0] == nil
+                    errmsg = "Group configuration has no members"
+                else
+                    firstconfig = $configList.getbyname(members[0])
+                    if firstconfig == nil
+                        errmsg = "Cannot find configuration for " + members[0]
+                    else
+                        envid, jobid = firstconfig.launch(nil, $configList.getDBConnection())
+                        job = $jobManager.getJobList.select{|j| j.jobid == jobid}
+                        job[0].name = firstconfig.name
+                        job[0].groupname = config.name
+                        job[0].groupid = jobid
+                        $jobManager.updateInDb(job[0])
+                        membersleft = members[1..-1]
+                        $Logger.debug "Queueing remaining jobs after starting first environment of group" + membersleft.to_s
+                        $jobManager.queuejobs(config.name, jobid, membersleft)
+                    end
+               end
+           else
+               envid, jobid = config.launch(nil, $configList.getDBConnection())
+           end
+        }
+    end
+    if errmsg != nil
+       errmsg
+    else
+       "{\"envid\":\"#{envid}\", \"jobid\":\"#{jobid}\"}"
+    end
+end
+
+get '/envs' do
+    lock.synchronize {
+       $envManager.loadAll()
+       envList = $envManager.getEnvs()
+       envList.to_json
+    }
+end
+
+get '/envs/:envid/vms' do
+    lock.synchronize {
+        env = $envManager.loadEnvVMs(params[:envid])
+        if env != nil
+            vmList = env.getVMList()
+            vmList.to_json
+        else
+            "ERROR: Environment does not exist"
+        end   
+    }
+end
+
+put '/envs/:envid/scaleup' do
+    if Auth.checkAuthInfo(params) == false
+       return "Not authorized to use this service" 
+    end
+    envid=params[:envid]
+    e = $envManager.getEnv(envid)
+    if e == nil
+        return "Environment not found"
+    end
+    if $jobManager.isJobRunning(envid)
+        return "Operation in progress"
+    end
+    jid = ""
+    lock.synchronize {
+       if $useGlobalScheduler == true
+           jid = e.scaleup(false, 0)
+       else
+           jid = e.scaleup(true, 0)
+       end
+    }
+    "{\"jobid\":\"#{jid}\"}"
+end
+
+
+put '/envs/:envid/scaledown' do
+    if Auth.checkAuthInfo(params) == false
+       return "Not authorized to use this service" 
+    end
+    envid=params[:envid]
+    e = $envManager.getEnv(envid)
+    if e == nil
+        return "Environment not found"
+    end
+    if $jobManager.isJobRunning(envid)
+           return "Operation in progress"
+    end
+    jid = ""
+    lock.synchronize {
+       jid = e.scaledown(true,nil)
+    }
+    "{\"jobid\":\"#{jid}\"}"
+end
+
+
+delete '/envs/:envid' do
+    if Auth.checkAuthInfo(params) == false
+       return "Not authorized to use this service" 
+    end
+    envid=params[:envid]
+    jid=""
+    lock.synchronize {
+       status,jid = $envManager.removeEnv(envid)
+    }
+    "{\"jobid\":\"#{jid}\"}"
+end
+
+
+get '/jobs' do
+    jobList=$jobManager.getJobList()
+    JSON.generate(jobList)
+end
+
+delete '/jobs/:jobid' do
+    jobid=params[:jobid]
+    lock.synchronize {
+       $jobManager.remove(jobid)
+    }
+end
+
+
+get '/vms' do
+    lock.synchronize {
+       $envManager.loadAll()
+       $envManager.loadVMInfo()
+       vmList = $envManager.getVMs()
+       JSON.generate(vmList)
+     }
+end

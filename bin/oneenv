@@ -1,0 +1,485 @@
+#!/usr/bin/env ruby
+# -------------------------------------------------------------------------- #
+# Copyright 2011-2012, Research In Motion Limited                            #
+#                                                                            #
+# Licensed under the Apache License, Version 2.0 (the "License"); you may    #
+# not use this file except in compliance with the License. You may obtain    #
+# a copy of the License at                                                   #
+#                                                                            #
+# http://www.apache.org/licenses/LICENSE-2.0                                 #
+#                                                                            #
+# Unless required by applicable law or agreed to in writing, software        #
+# distributed under the License is distributed on an "AS IS" BASIS,          #
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.   #
+# See the License for the specific language governing permissions and        #
+# limitations under the License.                                             #
+#--------------------------------------------------------------------------- #
+
+require 'rubygems'
+require 'rest_client'
+require 'json'
+require 'optparse'
+require ENV["HOME"] + "/config.rb"
+
+# Point this to the per-service oneenvd in a zone
+if ENV["CARINA_IP"] != nil
+   if ENV["CARINA_PORT"] != nil
+      baseurl = 'http://' + ENV["CARINA_IP"] + ':' + ENV["CARINA_PORT"]
+   end
+   if ENV["CARINA_GS_PORT"] != nil
+      baseurlgs = 'http://' + ENV["CARINA_IP"] + ':' + ENV["CARINA_GS_PORT"]
+   end
+else
+   # For testing
+   baseurl = 'http://10.135.41.79:4567'
+   baseurlgs = 'http://10.135.41.79:4321'
+end
+
+
+endpoint = ""
+config = ""
+envid = ""
+listenvs = false
+listjobs = false
+listvms = false
+listconfigs=false
+deploy = false
+scaleup = false
+scaledown = false
+delete = false
+upload=false
+configfile=nil
+download=false
+logfile=nil
+jsonout=false
+
+listsvcs = false
+listpools = false
+listreqs = false
+
+OptionParser.new do |opts|
+        opts.on("-c", "--create STRING", "Create environment from configuration") do |opt|
+                deploy=true
+                config = opt
+        end
+        opts.on("-r", "--remove STRING", "Remove environment and delete VMs") do |opt|
+                delete = true
+                envid = opt
+        end
+        opts.on("-u", "--scaleup STRING", "Scale up environment by adding VM") do |opt|
+                scaleup = true
+                envid = opt
+        end
+        opts.on("-d", "--scaledown STRING", "Scale down environment by removing VM") do |opt|
+                scaledown = true 
+                envid = opt
+        end
+        opts.on("-U", "--upload  STRING", "Upload config.rb, vm template or plugin to server") do |opt|
+                upload = true 
+                configfile = opt
+        end
+        opts.on("-D", "--download  STRING", "Download log file from server") do |opt|
+                download = true 
+                logfile = opt
+        end
+        opts.on_tail("-o", "--configs", "List all environment configs") do
+                listconfigs  = true 
+        end
+        opts.on_tail("-e", "--envs", "List all environments") do
+                listenvs  = true 
+        end
+        opts.on("-J", "--jobs", "List all jobs") do
+                listjobs  = true 
+        end
+        opts.on("-v", "--vms", "List all VMs") do
+                listvms = true 
+        end
+        opts.on("-k", "--envvms STRING", "List all VMs for environment") do |opt|
+                envid = opt
+                listvms = true 
+        end
+        opts.on("-S", "--services", "List all services managed by Global Scheduler") do
+                listsvcs = true 
+        end
+        opts.on("-R", "--requests", "List all requests in Global Scheduler") do
+                listreqs = true 
+        end
+        opts.on("-P", "--pools", "List all pools in Global Scheduler") do
+                listpools = true 
+        end
+        opts.on("-j", "--json", "Display verbose JSON output") do
+                jsonout = true 
+        end
+        begin
+                opts.parse!(ARGV)
+        end
+end
+
+def getauthinfo
+    if ENDPOINT == nil or ENDPOINT.size == 0
+        puts "No endpoint info in config.rb"
+        exit -1
+    else
+        # Just get one of authinfo from the client in order to match against
+        # the server. This is basic security for the oneenvd server to ensure
+        # only the authorized client oneenv CLI can talk to it
+        ENDPOINT.each_key do |k|
+            auth = ENDPOINT[k][:oneauth]
+            ep = k 
+            return ep,auth 
+         end
+    end
+end
+
+
+def print_table(table)
+    # Calculate widths
+    widths = []
+    table.each { |line|
+        c = 0
+        line.each { |col|
+            widths[c] = (widths[c] && widths[c] > col.length) ? widths[c] : col.length
+            c += 1
+        }
+    }
+    # Indent the last column left.
+    last = widths.pop()
+    format = widths.collect{|n| "%#{n}s"}.join(" ")
+    format += " %-#{last}s\n"
+    # Print each line.
+    table.each{|line|
+        printf(format, *line)
+    }
+end
+
+def print_jobs_table(data)
+    result = JSON.parse(data)
+    rows=result.length + 2
+    cols=5
+    table = Array.new(rows){Array.new{cols}}
+    table[0][0]="ID"
+    table[1][0]="--"
+    table[0][1]="ENVID"
+    table[1][1]="-----"
+    table[0][2]="CONFIG_NAME"
+    table[1][2]="-----------"
+    table[0][3]="TYPE"
+    table[1][3]="----"
+    table[0][4]="SUBMIT_TIME"
+    table[1][4]="-----------"
+    table[0][5]="STATUS"
+    table[1][5]="------"
+    r=2
+    result.each do |e|
+        table[r][0] = e["jobid"]
+        table[r][1] = e["envid"].to_s
+        table[r][2] = e["name"]
+        table[r][3] = e["type"]
+        table[r][4] = e["submit"]
+        table[r][5] = e["status"]
+        r = r + 1
+    end
+    print_table(table)
+end
+
+def print_env_table(data)
+    result = JSON.parse(data)
+    rows=result.length + 2
+    cols=5
+    table = Array.new(rows){Array.new{cols}}
+    table[0][0]="ID"
+    table[1][0]="--"
+    table[0][1]="NAME"  
+    table[1][1]="----"
+    table[0][2]="VMS"  
+    table[1][2]="---"
+    table[0][3]="P_STATUS"  
+    table[1][3]="--------"
+    table[0][4]="D_STATUS"  
+    table[1][4]="--------"
+    table[0][5]="APP_URL"  
+    table[1][5]="-------"
+    r=2
+    result.each do |e|
+        table[r][0] = e["envid"]
+        table[r][1] = e["name"]
+        table[r][2] = e["numVMs"].to_s
+        table[r][3] = e["policy_status"].downcase
+        table[r][4] = e["status"].downcase[0..20]
+        table[r][5] = e["url"] == nil ? "-" : e["url"]
+        r = r + 1
+    end
+    print_table(table)
+end
+
+def print_vm_table(data)
+    result = JSON.parse(data)
+    rows=result.length + 2
+    cols=5
+    table = Array.new(rows){Array.new{cols}}
+    table[0][0]="VMID"
+    table[1][0]="----"
+    table[0][1]="ENVID"
+    table[1][1]="----"
+    table[0][2]="HOSTNAME"
+    table[1][2]="--------"
+    table[0][3]="IPADDR"
+    table[1][3]="------"
+    table[0][4]="STATUS"
+    table[1][4]="------"
+    table[0][5]="CPU"
+    table[1][5]="---"
+    r=2
+    result.each do |e|
+        table[r][0] = e["vmid"]
+        table[r][1] = e["envid"]
+        table[r][2] = e["hostname"] == nil ? "-" : e["hostname"]
+        table[r][3] = e["ipaddress"] == nil ? "-" : e["ipaddress"]
+        table[r][4] = e["status"].downcase
+        table[r][5] = e["cpu"].to_s
+        r = r + 1
+    end
+    print_table(table)
+end
+
+def print_request_table(data)
+    result = JSON.parse(data)
+    rows=result.length + 2
+    cols=6
+    table = Array.new(rows){Array.new{cols}}
+    table[0][0]="ID"
+    table[1][0]="--"
+    table[0][1]="ENVID"
+    table[1][1]="----"
+    table[0][2]="SERVICE"
+    table[1][2]="-------"
+    table[0][3]="MEM"
+    table[1][3]="----"
+    table[0][4]="VCPUS"
+    table[1][4]="------"
+    table[0][5]="STATUS"
+    table[1][5]="------"
+    table[0][6]="POOL"
+    table[1][6]="----"
+    r=2
+    result.each do |e|
+        table[r][0] = e["@reqid"]
+        table[r][1] = e["@envid"]
+        table[r][2] = e["@service"]
+        table[r][3] = e["@mem"].to_s
+        table[r][4] = e["@vcpus"].to_s
+        table[r][5] = e["@status"]
+        table[r][6] = e["@pool"]
+        r = r + 1
+    end
+    print_table(table)
+end
+
+
+def print_pool_table(data)
+    result = JSON.parse(data)
+    rows=result.length + 2
+    cols=6
+    table = Array.new(rows){Array.new{cols}}
+    table[0][0]="NAME"
+    table[1][0]="----"
+    table[0][1]="ZONE"
+    table[1][1]="----"
+    table[0][2]="PRIORITY_CLASS"
+    table[1][2]="--------------"
+    table[0][3]="MEM_TOT"
+    table[1][3]="-------"
+    table[0][4]="MEM_AVAIL"
+    table[1][4]="---------"
+    table[0][5]="VCPUS_TOT"
+    table[1][5]="---------"
+    table[0][6]="VCPUS_AVAIL"
+    table[1][6]="-----------"
+    r=2
+    result.each do |e|
+        table[r][0] = e["@name"]
+        table[r][1] = e["@zone"]
+        table[r][2] = e["@priclass"]
+        table[r][3] = e["@mem"].to_s
+        table[r][4] = e["@availmem"].to_s
+        table[r][5] = e["@vcpus"].to_s
+        table[r][6] = e["@availvcpus"].to_s
+        r = r + 1
+    end
+    print_table(table)
+end
+
+
+def print_service_table(data)
+    result = JSON.parse(data)
+    rows=result.length + 2
+    cols=4
+    table = Array.new(rows){Array.new{cols}}
+    table[0][0]="NAME"
+    table[1][0]="----"
+    table[0][1]="PRIORITY_CLASS"
+    table[1][1]="--------------"
+    table[0][2]="MEM(ALLOC/MAX)"
+    table[1][2]="--------------"
+    table[0][3]="VCPUS(ALLOC/MAX)"
+    table[1][3]="---------------"
+    table[0][4]="CLIENT"
+    table[1][4]="------"
+    r=2
+    result.each do |e|
+        table[r][0] = e["@name"]
+        table[r][1] = e["@priclass"]
+        table[r][2] = e["@memallocated"].to_s + "/" + e["@maxmemory"].to_s
+        table[r][3] = e["@vcpusallocated"].to_s + "/" + e["@maxcpus"].to_s
+        c = e["@clientList"]
+        if c != nil && c.size != 0 
+            table[r][4] = c[0]["@host"] + ":" + c[0]["@port"]
+        else
+            table[r][4] = "NONE" 
+        end
+        r = r + 1
+    end
+    print_table(table)
+end
+
+def print_config_table(data)
+    result = JSON.parse(data)
+    rows=result.length + 2
+    cols=3
+    table = Array.new(rows){Array.new{cols}}
+    table[0][0]="NAME"
+    table[1][0]="----"
+    table[0][1]="TYPE"
+    table[1][1]="----"
+    table[0][2]="ENDPOINT"
+    table[1][2]="-------"
+    table[0][3]="DESCRIPTION"
+    table[1][3]="-----------"
+    r=2
+    result.each do |e|
+        table[r][0] = e["name"]
+        table[r][1] = e["type"]
+        table[r][2] = e["endpoint"] == nil ? "-" : e["endpoint"]
+        table[r][3] = e["desc"][0..40]
+        r = r + 1
+    end
+    print_table(table)
+end
+
+
+if listenvs == true 
+   response = RestClient.get baseurl + '/envs'
+   if jsonout == true
+      puts JSON.pretty_generate(JSON.parse(response.body))
+   else
+      print_env_table(response.body)
+   end
+end
+
+if listjobs  == true 
+   response = RestClient.get baseurl + '/jobs' 
+   if jsonout == true
+       puts JSON.pretty_generate(JSON.parse(response.body))
+   else
+      print_jobs_table(response.body)
+   end
+end
+
+if listconfigs  == true 
+   response = RestClient.get baseurl + '/configs' 
+   if jsonout == true
+       puts JSON.pretty_generate(JSON.parse(response.body))
+   else
+      print_config_table(response.body)
+   end
+end
+
+if listvms  == true 
+   if envid != ""
+      url = baseurl + '/envs/' + envid + '/vms' 
+      response = RestClient.get url 
+   else
+      response = RestClient.get baseurl + '/vms' 
+   end
+   body = response.body
+   if body.include? "ERROR:"
+       puts body
+   else
+       if jsonout == true
+           puts JSON.pretty_generate(JSON.parse(response.body))
+       else
+           print_vm_table(response.body)
+       end
+   end
+end
+
+
+if listreqs == true
+   response = RestClient.get baseurlgs + '/requests'
+   if jsonout == true
+       puts JSON.pretty_generate(JSON.parse(response.body))
+   else
+       print_request_table(response.body)
+   end
+end
+
+if listsvcs  == true
+   response = RestClient.get baseurlgs + '/services'
+   if jsonout == true
+       puts JSON.pretty_generate(JSON.parse(response.body))
+   else
+       print_service_table(response.body)
+   end
+end
+
+if listpools  == true
+   response = RestClient.get baseurlgs + '/pools'
+   if jsonout == true
+       puts JSON.pretty_generate(JSON.parse(response.body))
+   else
+       print_pool_table(response.body)
+   end
+end
+
+
+if deploy == true 
+   ep,authinfo = getauthinfo()
+   url = baseurl + '/configs/' + config
+   response = RestClient.post url , :content_type => 'text/plain', :endpoint => ep, :authinfo => authinfo
+   puts response.body
+end
+if scaleup == true
+   ep,authinfo = getauthinfo()
+   url = baseurl + '/envs/' + envid + "/scaleup" 
+   response = RestClient.put url , :content_type => 'text/plain', :endpoint => ep, :authinfo => authinfo
+   puts response.body
+end
+if scaledown  == true
+   url = baseurl+ '/envs/' + envid + "/scaledown"  
+   ep,authinfo = getauthinfo()
+   response = RestClient.put url , :content_type => 'text/plain', :endpoint => ep, :authinfo => authinfo
+   puts response.body
+end
+if delete == true
+   ep,authinfo = getauthinfo()
+   url = baseurl + '/envs/' + envid  
+   response = RestClient.delete url , :params => {:content_type => 'text/plain', :endpoint => ep, :authinfo => authinfo }
+   puts response.body
+end
+
+if upload == true
+   if configfile == "config.rb"
+        response = RestClient.post baseurl + '/configs' , :type => 'config',  :name => 'config.rb', :upload => File.new(ENV["HOME"] + "/" +  configfile), :content_type => 'text/plain'
+   elsif configfile.include? ".rb"
+        response = RestClient.post baseurl + '/configs' , :type => 'plugin', :name => configfile ,  :upload => File.new(ENV["HOME"] + "/plugins/" +  configfile), :content_type => 'text/plain'
+   else
+        response = RestClient.post baseurl + '/configs' , :type => 'vm', :name => configfile ,  :upload => File.new(ENV["HOME"] + "/vm/" +  configfile), :content_type => 'text/plain'
+   end
+   puts response.body
+end
+
+if download == true
+      response = RestClient.get baseurl + '/logs/' + logfile 
+      puts response.body
+end
+

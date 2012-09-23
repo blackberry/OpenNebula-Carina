@@ -1,0 +1,617 @@
+#!/usr/bin/env ruby
+# -------------------------------------------------------------------------- #
+# Copyright 2011-2012, Research In Motion Limited                            #
+#                                                                            #
+# Licensed under the Apache License, Version 2.0 (the "License"); you may    #
+# not use this file except in compliance with the License. You may obtain    #
+# a copy of the License at                                                   #
+#                                                                            #
+# http://www.apache.org/licenses/LICENSE-2.0                                 #
+#                                                                            #
+# Unless required by applicable law or agreed to in writing, software        #
+# distributed under the License is distributed on an "AS IS" BASIS,          #
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.   #
+# See the License for the specific language governing permissions and        #
+# limitations under the License.                                             #
+#--------------------------------------------------------------------------- #
+
+require 'rubygems'
+require 'sinatra'
+require 'redis'
+require 'logger'
+require 'json'
+require  "../etc/global.rb"
+require "../lib/gs_message.rb"
+
+
+# Represents a client to the global scheduler i.e a oneenvd instance representing
+# the environments for a particular service. Each oneenvd is assigned a different
+# port to run on on the controller node
+class Client < JSONable
+    attr_accessor :name
+    attr_accessor :zone
+    attr_accessor :host
+    attr_accessor :port
+
+
+    def initialize(name, zone, host, port)
+        @name = name
+        @zone = zone
+        @host = host
+        @port = port
+    end
+end
+
+
+# A Pool represnts a VDC in ONE whose capacity is allocted by the global scheduler
+# Pools can be assigned a priority class (gold,silver,bronze) which is used to match
+# requests from services
+class Pool < JSONable
+    attr_accessor :name
+    attr_accessor :zone
+    attr_accessor :vcpus
+    attr_accessor :mem
+    attr_accessor :availvcpus
+    attr_accessor :availmem
+    attr_accessor :priclass
+    attr_accessor :status
+
+    def initialize(name, zone, vcpus, mem, priclass)
+         @name = name
+         @zone = zone
+         @vcpus = vcpus
+         @mem = mem
+         @priclass = priclass
+         @availvcpus = vcpus
+         @availmem = mem
+    end
+end
+
+# This  represents a business service that will draw resources from the scheduler
+# Each service is represented by one or more clients (oneenvd's) that will make 
+# resource requests for environments that they manage.  By associating a prioirty class
+# with the service - and hence the requests -  the global scheduler tries to match
+# the request with the right type of resource
+#
+#
+class Service  < JSONable
+    attr_accessor :name
+    attr_accessor :id
+    attr_accessor :clientList
+    attr_accessor :zone
+    attr_accessor :vcpusallocated
+    attr_accessor :memallocated
+    attr_accessor :priclass
+    attr_accessor :maxcpus
+    attr_accessor :maxmemory
+
+
+    def initialize (name,authinfo,  maxcpus, maxmemory, priclass)
+        @name = name
+        @zone = zone
+        @maxcpus = maxcpus
+        @maxmemory = maxmemory
+        @priclass = priclass
+        @clientList = Array.new
+        @vcpusallocated = 0
+        @memallocated = 0
+    end
+end
+
+# This class represents the global scheduler which periodically wakes up and looks
+# at the list of outstanding requests made  by clients and matches them to the available
+# resource pools. It communicates with the client via Redis pub/sub mechanism. Attempts
+# to match requests with available pools can result in reclaim or preempt resources
+# from other clients so that the highest priority services can get access to matching
+# resources.
+class Scheduler
+     def initialize()
+         @poolList = Array.new
+         @svcList  = Array.new
+         @reqList  = Array.new
+         @preempteeList = Array.new
+         @preemptableList = Array.new
+         @reclaimOutstanding = Hash.new
+     end
+
+     # Load the configuration and  resource requests from Redis
+     def loadAll()
+         # Load the  configuration from global.rb
+         SHAREDPOOLS.each_key do |k|
+             p = Pool.new(k, SHAREDPOOLS[k][:zone],
+                             SHAREDPOOLS[k][:allocateable_cpus],
+                             SHAREDPOOLS[k][:allocateable_mem],
+                             SHAREDPOOLS[k][:service_class])
+
+             @poolList.push(p)
+         end
+         SERVICES.each_key do |k|
+             s = Service.new(k, SERVICES[k][:authinfo],
+                             SERVICES[k][:maxcpus],
+                             SERVICES[k][:maxmemory],
+                             SERVICES[k][:priority])
+             @svcList.push(s)
+         end
+         # Load the requests from redis
+         @reqList = $eventProcessor.loadRequests()
+         # Compute the free/used stats from state of requests
+         @reqList.each { |req|
+            if req.status == "ALLOCATED"
+               pmatches = @poolList.select {|p| p.name == req.pool}
+               if pmatches == nil || pmatches[0] == nil
+                    $Logger.error "Unable to find pool #{req.pool} for ALLOCATED request #{req.reqid}"
+                     next
+               end
+               smatches = @svcList.select {|s| s.name == req.service}
+               if smatches == nil || smatches[0] == nil
+                    $Logger.error "Unable to find service #{req.service} for ALLOCATED request #{req.reqid}"
+                     next
+               end
+               pool = pmatches[0]
+               pool.availvcpus = pool.availvcpus.to_i - req.vcpus.to_i
+               pool.availmem   = pool.availmem.to_i  - req.mem.to_i
+               service = smatches[0]
+               service.vcpusallocated = service.vcpusallocated.to_i + req.vcpus.to_i
+               service.memallocated = service.memallocated.to_i + req.mem.to_i
+            end
+         }
+     end
+
+
+     def addrequest(request)
+         @reqList.push(request)
+     end
+
+     def getRequests()
+         return @reqList
+     end
+
+     def getServices()
+         return @svcList
+     end
+
+     def getPools()
+         return @poolList
+     end
+
+     def getPriClass(req)
+          match = @svcList.select{|s| s.name == req.service}
+          return match[0].priclass
+     end
+
+     def getReqPoolPriClass(req)
+          match = @poolList.select{|p| p.name == req.pool}
+          return match[0].priclass
+     end
+
+     # Add a client (oneenvd) to a services list. A client can exist for
+     # each zone for a given service
+     def registerClient(client, svcname)
+          match = @svcList.select{|s| s.name == svcname}
+          if match == nil || match[0] == nil
+              $Logger.error "Unable to find service #{svcname}"
+              return
+          end
+          svc = match[0]
+
+          # Only add it if its not the same oneenvd re-registerign
+          match = svc.clientList.select{|c| c.name == client.name && c.zone == client.zone && c.port == client.port && c.host == client.host}
+          if match == nil || match[0] == nil
+              svc.clientList.push(client)
+          end
+     end
+
+     def priclass2Index(priclass)
+         classlist = [ 'bronze', 'silver', 'gold', 'platinum' ]
+         return classlist.index(priclass)
+     end
+
+     # Attempt to find a matching pool for a request and inform the client if found
+     def reserve(req)
+          # Check the services priority
+          match = @svcList.select{|s| s.name == req.service}
+          if match == nil || match[0] == nil
+              $Logger.error "Unable to find service #{req.service}"
+              return
+          end
+          service = match[0]
+          svcpri = service.priclass
+          # CHeck if service limits will be exceeded
+          vcpusallocated = service.vcpusallocated.to_i + req.vcpus.to_i
+          memallocated = service.memallocated.to_i + req.mem.to_i
+          if vcpusallocated > service.maxcpus.to_i || memallocated > service.maxmemory.to_i
+              $Logger.debug "Request #{req.reqid} would exceed limits for #{req.service}"
+              return
+          end
+          
+          if SHAREDPOOLS[req.pool] == nil
+              $Logger.error "Pool in request #{req.reqid} is #{req.pool} not known"
+              return
+          end
+          # Find all pools with a equal or better class than the request
+          # We look for pools in the same zone as the pool in which the
+          # environment was originall created in.
+          targetZone = SHAREDPOOLS[req.pool][:zone]
+          match = @poolList.select {|p|
+                     priclass2Index(p.priclass) >= priclass2Index(svcpri) && 
+                     p.zone  == targetZone &&
+                     p.availvcpus.to_i >= req.vcpus &&
+                     p.availmem.to_i >=  req.mem
+                  }
+          if match == nil || match[0] == nil
+              $Logger.info "No matching pool found for #{req.reqid}. Adding req to preemptee list"
+              @preempteeList.push(req)
+              return
+          end
+
+          $Logger.info "Number of matching pools found for req #{req.reqid} is #{match.length()}"
+          
+ 
+          match.sort!{ |a,b| a.availvcpus.to_i <=> b.availvcpus.to_i }
+          pool = match[0]
+          if pool == nil
+             $Logger.error "No pools found #{req.service}"
+             return
+          end
+          $Logger.info "Pool info: #{pool.availvcpus}  #{pool.availmem}"
+          $Logger.info "Req info:  #{req.vcpus} #{req.mem}"
+        
+          $Logger.info "Assigning #{req.reqid} to pool #{pool.name}"
+          pool.availvcpus = pool.availvcpus.to_i - req.vcpus.to_i
+          pool.availmem   = pool.availmem.to_i  - req.mem.to_i
+          service.vcpusallocated = service.vcpusallocated.to_i + req.vcpus.to_i
+          service.memallocated = service.memallocated.to_i + req.mem.to_i
+          req.status = "ALLOCATED" 
+          req.pool = pool.name
+          $eventProcessor.updateRequest(req)
+          # Send m GRANT essage to the client
+          g=Grant.new("GRANT",req.zone, req.service, pool.name, req.envid, req.reqid)
+          g.vcpus = req.vcpus
+          g.mem = req.mem
+          $eventProcessor.notifyclient(req.service + "-" + req.zone, g.to_json) 
+          return
+     end
+      
+     # Process a release request sent from the client in order to free up 
+     # the resources
+     def release(rel)
+         # Find the request with this id
+         match = @reqList.select{|r| r.reqid == rel.reqid}
+         if match == nil or match[0] == nil
+             $Logger.error "Internal error. Cannot find req with id #{rel.reqid}"
+             return
+         end
+         req = match[0]
+         freeup(req) 
+     end
+
+    
+     # Helper function to restore counters when resources are freed. Resources are
+     # freed by either an explicit RELEASE command from the client or a CANCEL when
+     # the entire environment is removed
+     def freeup(req)
+         if req.status != "ALLOCATED"
+             $Logger.error "Internal error. Trying to release unallocated request for #{req.reqid}"
+             return
+         end
+         
+         # Find the pool and restore the capacity
+         match = @poolList.select{|p|  p.name == req.pool  }
+         if match == nil || match[0] == nil
+             $Logger.error  "Internal error. No matching pool found for #{req.reqid}"
+             return
+         end
+         pool = match[0]
+         pool.availvcpus = pool.availvcpus.to_i +  req.vcpus.to_i
+         pool.availmem   = pool.availmem.to_i  +  req.mem.to_i
+         # Adjust the limit counters for the service
+         match = @svcList.select{|s|  s.name == req.service}
+         if match == nil || match[0] == nil
+             $Logger.error  " No matching service #{req.service} found for #{req.reqid}"
+         end
+         service = match[0]
+         service.vcpusallocated = service.vcpusallocated.to_i - req.vcpus.to_i
+         service.memallocated = service.memallocated.to_i - req.mem.to_i
+         req.status = "RELEASED"
+         $eventProcessor.updateRequest(req)
+     end
+
+
+     # Handles attempts to release resources for lower priority services which
+     # are using resources from a higher priority pool than they normally should.
+     def reclaim()
+          if @preempteeList.empty?
+              $Logger.info "No one requiring preemption"
+              return
+          end
+          # Look for low priority requests using resources of a higher class
+          @preemptableList.clear
+          @reqList.each do |req|
+               if req.status == "ALLOCATED"
+                   match1 = @poolList.select {|p| p.name == req.pool}
+                   match2 = @svcList.select {|s| s.name == req.service}
+                   poolpri = match1[0].priclass 
+                   svcpri  = match2[0].priclass
+                   if priclass2Index(poolpri) > priclass2Index(svcpri)  
+                      $Logger.info "Adding req #{req.reqid} as preemption candidate"
+                      @preemptableList.push(req)
+                   end
+               end
+          end
+          $Logger.info "The size of the preemptable list is #{@preemptableList.length}"
+          # Try and match preemptable with preemptee
+          @preempteeList.each do |target|
+               targetPriClass = getPriClass(target)
+               $Logger.info " Trying to find a match for #{target.reqid} with class #{targetPriClass}"
+               match = @preemptableList.select { |r|
+                        candPoolPriClass = getReqPoolPriClass(r)
+                        targetPriClass == candPoolPriClass}
+               if match == nil or match[0] == nil
+                   $Logger.info "No match found for #{target.reqid}"
+                   next
+               end
+               # Check if we have already sent a reclaim request for this
+               # environment recently
+               r = match[0]
+               ekey = r.service + "-" + r.zone + "-" + r.envid
+               if @reclaimOutstanding.has_key?(ekey)
+                   if Time.now - @reclaimOutstanding.fetch(ekey) < 60
+                       $Logger.info "Environment has recent reclaim request #{r.envid}"
+                       next
+                   end
+               end
+
+               # Send a reclaim message to the target client which we are
+               # preempting. The reclaim will cause a release of the resource
+               # which should be assigned to the target
+               
+               $Logger.info " Sending a reclaim for #{r.reqid}"
+               rec = Reclaim.new("RECLAIM", r.reqid, r.envid)
+                
+               $eventProcessor.notifyclient(r.service + "-" + r.zone, rec.to_json) 
+               @reclaimOutstanding.store(ekey, Time.now) 
+          end
+
+     end
+
+     # When an environment is removed by oneenvd, clean up all requests
+     def cancelEnv(cancel)
+           $Logger.debug "Cancelling requests for environment #{cancel.service} #{cancel.zone} #{cancel.envid}"
+         match = @reqList.select{|r| r.zone == cancel.zone && r.service == cancel.service && r.envid == cancel.envid}
+         if match == nil or match[0] == nil
+             # This can happen if oneenvd cancelling environment which didn't
+             # request any resources
+             $Logger.debug "No matching requests  for client #{cancel.service} #{cancel.zone} #{cancel.envid}"
+             return
+         end
+         match.each do |r|
+            if r.status == "ALLOCATED"
+                freeup(r)
+            end
+            r.status  = "CANCELLED"
+            $eventProcessor.updateRequest(r)
+            $eventProcessor.expireRequest(r)
+            @reqList.delete(r)
+         end
+     end
+
+     def run(lock)
+         loop do
+             $Logger.debug "Scheduler: Examining requests"
+             lock.synchronize {
+                 @preempteeList.clear
+                 @reqList.each do |req|
+                     #puts "Scheduler: Examining request #{req.reqid}"
+                     if req.status == "PEND"
+                        self.reserve(req)
+                     end
+                 end 
+                 reclaim() 
+                 $Logger.debug "Scheduler: Finished examining requests - going to sleep"
+             }
+             sleep 30
+         end
+     end
+end
+
+
+# Class to handle requests from the clients. Each client has a channel through which
+# which the global scheduler sends messages named <service name>-<zone>. 
+# The globl scheduler subscribes to a 'svc' channel that all clients can send messages on. 
+# A special 'glob-sched' channel is used to send control/initializaiton messages to
+# any client.
+class EventProcessor
+
+    def initialize()
+        if $redis2.get("nextRequestId") == nil
+            puts "Initilizing nextRequestId"
+            $redis2.set("nextRequestId", "1")
+        end
+    end
+
+    def insertRequest(req)
+         puts "Incrementing request id"
+         $redis2.incr("nextRequestId")
+         rid = $redis2.get("nextRequestId")
+         puts "Request id #{rid}"
+         req.reqid = rid
+         msg = req.to_json
+         $redis2.set("req:#{rid}",msg)
+         puts "Inserted request with id #{rid}"
+    end
+
+    def updateRequest(req)
+         msg = req.to_json
+         rid = req.reqid
+         $redis2.set("req:#{rid}",msg)
+    end
+
+    def expireRequest(req)
+         $redis2.expire("req:#{req.reqid}", 600)
+    end
+
+
+    def loadRequests()
+        keylist=$redis2.keys("req*")
+        reqList = Array.new
+        keylist.each { |k|
+            val = $redis2.get(k)
+            req = Request.new("","","")
+            req.from_json(val)
+            if req.status != "RELEASED" && req.status != "CANCELLED"
+                reqList.push(req)
+            end
+        }
+        return reqList
+    end
+
+
+    def notifyclient(channelname, message)
+         $Logger.info "Sending message to client #{channelname}"
+         $redis2.publish(channelname, message)
+    end
+
+    def processmsg(channel, msg)
+        if msg.include? "REGISTER"
+            reg = Register.new("","","")
+            reg.from_json(msg)
+            $Logger.debug "Processing REGISTER request #{reg.service} #{reg.type} #{reg.zone} "
+            client = Client.new(reg.service, reg.zone, reg.host, reg.port)
+            $scheduler.registerClient( client, reg.service)
+           
+            #Send back an INITIALIZE message to the oneenvd telling it
+            #all the outstanding resources it has by giving the list
+            #of reqids
+            reqList = $scheduler.getRequests()
+            if reqList == nil
+                return
+            end
+            match = reqList.select{|r|  r.status == "ALLOCATED" && r.zone  == reg.zone && r.service == reg.service }
+            if match == nil || match[0] == nil
+                $Logger.info " No outstanding allocatred resources for #{reg.service} in zone #{reg.zone}"
+            end
+
+            initresp = Initialize.new("INITIALIZE")
+            match.each { |r|
+                initresp.reqIds[r.reqid] = r.envid
+            }
+            msg = initresp.to_json
+            self.notifyclient(reg.service+"-"+reg.zone, msg)
+        end
+
+        if msg.include? "ALLOCATE"
+            req = Request.new("","","")
+            req.from_json(msg)
+            $Logger.debug "Processing ALLOCATE request #{req.service} #{req.type} #{req.vcpus} #{req.mem} #{req.pool}"
+            # Persist the request into redis
+            req.submittime = Time.now
+            req.status = "PEND"
+            self.insertRequest(req)
+            # Tell the scheduler about request
+            $scheduler.addrequest(req)
+            # Update the service and VDC counters in redis
+        end
+
+        if msg.include? "RELEASE"
+            release = Release.new("","")
+            release.from_json(msg)
+            $scheduler.release(release) 
+        end
+
+        if msg.include? "CANCEL"
+            cancel = Cancel.new("","","","")
+            cancel.from_json(msg)
+            $scheduler.cancelEnv(cancel) 
+        end
+
+    end
+
+    def run(lock)
+        # Publish STARTUP message so that clients will know to REGISTER
+        # This will handle the case where global scheduler is restarted after
+        s = Startup.new("STARTUP")
+        notifyclient("glob-sched", s.to_json)
+        $redis.subscribe("svc") do |on|
+            on.message do |channel, msg|
+               $Logger.debug "Received msg on channel #{channel}:  #{msg}"
+               lock.synchronize { 
+                   self.processmsg(channel, msg)
+               }
+            end
+        end 
+    end
+end
+
+
+class Params
+     def self.readFile(file)
+         File.readlines(file).each do |line|
+             next if /\S/ !~ line || line.match(/^#/)
+             values = line.split("=")
+             lines2 = values[1].split.join("\n")
+             ENV[values[0]] = lines2
+         end
+     end
+end
+
+if File.exists?("../etc/system.conf")
+    Params.readFile("../etc/system.conf")
+end
+
+if File.exists?("../etc/oneenv.conf")
+    conffile = "../etc/oneenv.conf"
+else
+    conffile = ENV["HOME"] + "/conf/oneenv.conf"
+end
+Params.readFile(conffile)
+
+
+$port =  ENV["CARINA_GS_PORT"]
+set :bind, '0.0.0.0'
+set :port, $port 
+
+
+Thread.abort_on_exception = true
+$Logger = Logger.new(ENV["HOME"]+'/logs/oneenvd-gs.log')
+$Logger.level = Logger::DEBUG
+$scheduler = Scheduler.new()
+# We create two connections to the Redis server. One for sending requests asynchronously
+# and the other for  receiving subscriptions. These are handled by two separate threads
+# hence we need two connections.
+$redis = Redis.new(:host => ENV["GS_REDIS_IP"], :port => ENV["GS_REDIS_PORT"])
+$redis2 = Redis.new(:host => ENV["GS_REDIS_IP"], :port => ENV["GS_REDIS_PORT"])
+
+
+
+lock = Mutex.new
+$eventProcessor = EventProcessor.new()
+Thread.new() {
+    $eventProcessor.run(lock)
+}
+
+$scheduler.loadAll()
+Thread.new() {
+    $scheduler.run(lock)
+}
+
+get '/pools' do
+    lock.synchronize {
+        poolList = $scheduler.getPools()
+        poolList.to_json
+    }
+end
+
+get '/services' do
+    lock.synchronize {
+        svcList = $scheduler.getServices()
+        svcList.to_json
+    }
+end
+
+get '/requests' do
+    lock.synchronize {
+        reqList = $scheduler.getRequests()
+        reqList.to_json()
+    }
+end
+

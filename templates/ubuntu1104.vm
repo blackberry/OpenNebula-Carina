@@ -1,0 +1,33 @@
+NAME           = %NAME%
+CPU            = %CPU%
+VCPU           = %CPU%
+MEMORY         = %MEMORY%
+OS             = [
+  ARCH         = x86_64,
+  BOOT         = hd ]
+DISK           = [
+  IMAGE_ID     = %IMAGE_ID%,
+  TARGET       = vda,
+  DRIVER       = qcow2 ]
+NIC            = [
+  MODEL        = virtio,
+  NETWORK_ID   = %NETWORK_ID% ]
+GRAPHICS       = [
+  TYPE         = vnc,
+  LISTEN       = 0.0.0.0 ]
+CONTEXT        = [
+  ENVID=%ENVID%,
+  FILES="http://%CARINA_IP%/repo/%SERVICE_NAME%/context/authorized_keys http://%CARINA_IP%/repo/%SERVICE_NAME%/context/init.sh  http://%CARINA_IP%/repo/%SERVICE_NAME%/context/network.sh  http://%CARINA_IP%/repo/%SERVICE_NAME%/context/%APP_CONTEXT_SCRIPT%",
+  CARINA_IP=%CARINA_IP%,
+  SERVICE_NAME=%SERVICE_NAME%,
+  %APP_CONTEXT_VAR%,
+  VMID=$VMID,
+  DEFUSER=rimadmin,
+  HOSTNAME     = "$NAME",
+  IP           = "$NIC[IP]",
+  NETMASK      = "$NETWORK[NETMASK,     NETWORK_ID=%NETWORK_ID%]",
+  GATEWAY      = "$NETWORK[GATEWAY,     NETWORK_ID=%NETWORK_ID%]",
+  NAMESERVERS  = "$NETWORK[NAMESERVERS, NETWORK_ID=%NETWORK_ID%]",
+  DOMAIN       = "$NETWORK[DOMAIN,      NETWORK_ID=%NETWORK_ID%]" ]
+
+

@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+
+<!-- Put site-specific property overrides in this file. -->
+
+<configuration>
+  <property>
+    <name>dfs.replication</name>
+    <value>2</value>
+  </property>
+  <property>
+     <name>dfs.permissions</name>
+     <value>false</value>
+  </property>
+  <property>
+     <!-- specify this so that running 'hadoop namenode -format' formats the right dir -->
+     <name>dfs.name.dir</name>
+     <value>/var/lib/hadoop-0.20/cache/hadoop/dfs/name</value>
+  </property>
+
+  <property>
+    <name>dfs.hosts.exclude</name>
+    <value>/usr/lib/hadoop-0.20/conf/excludes</value>
+  </property>
+
+</configuration>
