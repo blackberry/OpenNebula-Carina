@@ -42,7 +42,9 @@ Key Features
 Usage
 -----
 `
-Usage: oneenv [options]
+     
+Usage: oneenv [options]    
+
     -c, --create STRING              Create environment from configuration
     -r, --remove STRING              Remove environment and delete VMs
     -u, --scaleup STRING             Scale up environment by adding VM
