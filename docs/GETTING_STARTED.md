@@ -18,21 +18,24 @@ created.
 
    There is an error in ~/gems/specifications/mime-types-1.18.gemspec
    that gets installed: Change
+~~~
     s.date = %q{2012-03-21 00:00:00.000000000Z}
    to:
     s.date = %q{2012-03-21}
+~~~
 
 
   Copy the 'oneenv' CLI in your local bin directory
 
   Set the following environment variables on the service account on the oZones 
   proxy or OpenNebula server where ONE commands are normally issued: 
+~~~
     export GEM_HOME=/var/lib/gems/1.8
     export GEM_PATH=/var/lib/gems/1.8:/home/<svc>/gems
     export CARINA_IP=5.62.27.190
     export CARINA_PORT=4567  (this is service-specific port that points to the oneenvd)
     export CARINA_GS_PORT=4321
-
+~~~
 
 ## Configuration ##
 
