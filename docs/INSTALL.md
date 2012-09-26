@@ -79,7 +79,7 @@ ScriptAlias /cgi-bin/ "/usr/lib/cgi-bin/"
 G. Set up and install Redis VMs
 
    * Download and build redis from http://redis.io (version 2.6)
-   * Create 2 VMs to act as master and slave and install redis
+   * Create 2 VMs to act as master and slave and install redis - Alternatively for testing you can just run redis on Carina management VM.
    * Start the redis server
          redis-server --daemonize yes --appendonly yes (on master)
          redis-server --daemonize yes --slaveof  <masterip> 6379 (on slave)
@@ -138,13 +138,19 @@ template do the following:
 * Login to the VM with default username/password: carina/carina
 * Refresh the /var/lib/one/opennebula-carina with the latest version from
   Github
-* Edit /home/carina/etc/oneenv.conf to set the CARINA_IP parameter to 
-  the IP address of the VM
+*  mv /var/lib/one/opennebula-carina/etc/oneenv.conf  /var/lib/one/opennebula-carina/etc/oneenv.conf.bak
+* Edit /home/carina/conf/oneenv.conf to set the CARINA_IP parameter to 
+  the IP address of the VM (NOTE: In current appliance the oneenv.conf still refers to CONTROLLER_IP, ONEENVD_PORT, ONEENVD_GS_PORT. Change these to CARINA_IP, CARINA_PORT, and CARINA_GS_PORT respectively)
+* Edit /var/lib/one/opennebula-carina/etc/system.conf to set DB_HOST and 
+  GS_REDIS_IP to the IP address of the VM (or 127.0.0.1)
+* sudo to root and Start up the Redis server if its not running:
+         redis-server --daemonize yes --appendonly yes 
 * The appliance is installed with OpenNebula 3.6 by default. If you are
   running older version of OpenNebula, install the appropriate client CLIs.
   Built binaries for OpenNebula 3.0 are provided in the /home/carina/dist
 * Edit the /var/lib/one/opennebula-carina/etc/global.rb with the resource 
   pools/service specific to your environment
 * Create per-service accounts as required as described in step (I) above
-
+* Start up scheduler daemon /var/lib/one/opennebula-carina/misc/start-oneenvd-gs.sh (start the oneenvd for that service)
+* Start up per-service oneenvd daemon /var/lib/one/opennebula-carina/misc/start-oneenvd.sh (do this for each service account)
 
