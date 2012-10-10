@@ -1,4 +1,4 @@
-#!/bin/bash 
+#!/bin/bash -x
 # -------------------------------------------------------------------------- #
 # Copyright 2002-2012, Research In Motion Limited                            #
 #                                                                            #
@@ -22,7 +22,7 @@ getsvcid() {
 
 getvmip() {
    if [[ $USE_DDNS == "FALSE" ]]; then
-     IP=`onecmd -e $ENDPOINT onevm show $1  | grep IP | tr '=' ' ' | tr  ',' ' ' | awk 'NR>1 {print $2}'`
+     IP=`onecmd -e $ENDPOINT onevm show $1  | grep IP | tr '=' ' ' | tr  ',' ' ' | awk 'END {print $2}'`
      echo $IP
      return
    fi
