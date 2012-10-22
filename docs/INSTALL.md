@@ -114,16 +114,20 @@ accessed from the corresponding account on the OpenNebula server.
    * /bin/su svc
    * mkdir $HOME/logs $HOME/work $HOME/conf $HOME/vm
    * cp /var/lib/one/opennebula-carina/etc/oneenv.conf.bak to $HOME/conf/oneenv.conf
-   * Change the CARINA_PORT to be unique for each service and set the CARINA_IP to point to Carina VM
+   * Change the CARINA_PORT to be unique for each service and set the CARINA_IP to point to Carina VM. Also set the SERVIC_NAME parameter to reflect the svc
    * Set LOAD_VM_INFO=false 
    * cp /var/lib/one/opennebula-carina/etc/config.rb $HOME/config.rb
     (edit the config.rb to set the appropriate service-specific endpoints and 
     templates)
    *  Generate ssh keys for each service and copy into /var/www/repo/<service>/context (these will be copied into the service's VM and then later used when doing a passwordless ssh into the VM)
+
+~~~
          ssh-keygen -t rsa
          cp $HOME/.ssh/id_rsa.pub /var/www/repo/<service>/context/authorized_keys
-   *  /var/lib/one/opennebula-carina/misc/createschema.sh <svc>
-   * cp /var/lib/one/opennebula-carina/context/*  /var/www/repo/<service>/context (optional if you want to use the sample contextualization scripts)
+~~~
+
+   *  /var/lib/one/opennebula-carina/misc/createschema.sh svc
+   *  cp /var/lib/one/opennebula-carina/context/*  /var/www/repo/svc/context (optional if you want to use the sample contextualization scripts)
    * setup /var/www/downloads to hold common packages/binaries that are 
    accessed by the sample contextualization scripts if required
    * /var/lib/one/opennebula-carina/misc/start-oneenvd.sh (start the oneenvd for that service)

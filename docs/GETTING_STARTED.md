@@ -14,7 +14,9 @@ created.
    or ONE server where you normally login to run ONE commands. If the admin
    has already installed it at the system level, this step is not necessary:
 
+~~~
     gem install --install-dir ~/gems  /tmp/rest-client-1.6.7.gem
+~~~
 
    There is an error in ~/gems/specifications/mime-types-1.18.gemspec
    that gets installed: Change
