@@ -150,10 +150,14 @@ $envManager=EnvManager.new(con)
 $configList=EnvConfigs.new(con)
 if ENV["SERVICE_NAME"] == nil
     $Logger.fatal "Service name not defined"
-    exit
+    exit -1
 end
 
 $SVCID = $envManager.getServiceId(ENV["SERVICE_NAME"])
+if $SVCID == nil
+    $Logger.fatal "Service name #{ENV["SERVICE_NAME"]} not registered in DB"
+    exit -1
+end
 
 if $useGlobalScheduler == true
     $gsProxy = GSchedProxy.new

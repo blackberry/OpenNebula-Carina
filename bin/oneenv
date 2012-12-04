@@ -25,14 +25,20 @@ require ENV["HOME"] + "/config.rb"
 if ENV["CARINA_IP"] != nil
    if ENV["CARINA_PORT"] != nil
       baseurl = 'http://' + ENV["CARINA_IP"] + ':' + ENV["CARINA_PORT"]
+   else
+      puts "Environment variable CARINA_PORT not defined"
+      exit -1
    end
    if ENV["CARINA_GS_PORT"] != nil
       baseurlgs = 'http://' + ENV["CARINA_IP"] + ':' + ENV["CARINA_GS_PORT"]
+   else
+      puts "Environment variable CARINA_GS_PORT not defined"
+      exit -1
    end
 else
    # For testing
-   baseurl = 'http://10.135.41.79:4567'
-   baseurlgs = 'http://10.135.41.79:4321'
+   puts "Environment variable CARINA_IP not defined"
+   exit -1
 end
 
 

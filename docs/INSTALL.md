@@ -114,7 +114,8 @@ accessed from the corresponding account on the OpenNebula server.
    * /bin/su svc
    * mkdir $HOME/logs $HOME/work $HOME/conf $HOME/vm
    * cp /var/lib/one/opennebula-carina/etc/oneenv.conf.bak to $HOME/conf/oneenv.conf
-   * Change the CARINA_PORT to be unique for each service and set the CARINA_IP to point to Carina VM. Also set the SERVIC_NAME parameter to reflect the svc
+   * Change the CARINA_PORT to be unique for each service and set the CARINA_IP to point to Carina VM. 
+   * Set the SERVICE_NAME parameter to reflect the service
    * Set LOAD_VM_INFO=false 
    * cp /var/lib/one/opennebula-carina/etc/config.rb $HOME/config.rb
     (edit the config.rb to set the appropriate service-specific endpoints and 

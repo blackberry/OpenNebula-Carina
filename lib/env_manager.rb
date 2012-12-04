@@ -685,6 +685,7 @@ class EnvManager
         rs.each_hash{|h| 
             return h['svcid']
         }
+        return nil
      end
 
      # Remove an env or env group. If 'gid' is negative all environments 
