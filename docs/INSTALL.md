@@ -3,7 +3,8 @@ This document describes the process to setup of the Carina Environment
 Manager for an OpenNebula installation. It is assumed you have OpenNebula
 installed and configured and can startup VMs in it. Carina can be installed
 on a bare VM containing only the OS or it can be installed from a VM
-applicance that pre-installs all the dependencies. 
+applicance that pre-installs all the dependencies.  For additional background on
+requirements and  Carina architecture see the blog entry at http://blog.opennebula.org/?p=3509.
 
 This management VM should ideally be created in a management VDC in 
 environments where different services will be running in their own virtual
@@ -12,6 +13,32 @@ from the  networks on which service VMs will be created.  Specifically
 service VMs 
 will need to be able to connect to the management VM on port 80/http and the 
 management VM must be able to connect to the service VMs on port 22/ssh.
+
+The management VM contains the Carina software that can be installed as described in the
+sections below. The service VMs do not require any Carina-specific software installed, but
+must be able to use a tool like 'wget' to report status to the Carina management VM.
+The serice VMs should be configured to support OpenNebula contextualization scripts so 
+that  when Carina launches the VM using OpenNebual it can pass scripts and parameters that
+will setup up middleware/applications on the service VM. Examples of how to setup 
+contextualiztion scripts for various middleware packages are provided under the '/context'
+directory. These should be seen as starting points for integrating applications to make
+use of Carina services.
+
+Carina communicates with OpenNebula using the 'onecmd' wrapper which allows for interactions
+with multiple OpenNebula endpoints which can be either the oZones proxy or individual
+instances of OpenNebula server. The 'onecmd' wrapper generates the '.one_auth' file containing
+the authentication information required to issue commands such as 'onevm' to each endpoint by setting the ONE_XMLRPC variable appropriately. 
+The endpoint information is retreived from the config.rb for each service (see the sample config.rb). 
+
+The Carina management VM will require setting up an OS user account ('carina') under which
+the Carina global scheduler , oneenvd-gs,  and the system oneenvd run. In general a separate OS
+account should be setup on the Carina management VM for each user or service which has its
+own credentials to talk to the OpenNebula server. A copy of oneenvd will run for each service 
+under that OS account and manage environments on behalf of that service. Separate config.rb files
+are maintained for each service. The accounts on the Carina management VM should mirror
+those on the server where users normally invoke the 'onevm' command to create and manage VMs.
+
+
 
 RAW INSTALL
 ===========

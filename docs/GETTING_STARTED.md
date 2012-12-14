@@ -1,7 +1,7 @@
 
 The server components for opennebula-carina are installed in a management
 VM that can be accessed from the OpenNebula front-end. The client component
-(oneenv CLI) needs to be installed on the oZones proxy or OpenNebula server
+(oneenv CLI) needs to be installed on either the oZones proxy or OpenNebula server
 to interact with the server components. The client needs some environment
 variables that have to be setup to talk to the server. The configuration
 file $HOME/config.rb defines the endpoints, templates and environment 
@@ -47,7 +47,7 @@ one environment definition.  The following is a minimal example:
 ~~~
 ENDPOINT = {
         'flm01' => {
-                :proxy   => 'http://ring00a/flm01',
+                :proxy   => 'http://oneserver:2633/RPC2',
                 :oneauth => 'flm01-oneenv2:XXXXXX'
                 }
             }
@@ -85,7 +85,27 @@ ENVIRONMENT = {
 }
 ~~~
 
-The following explains the parameters:
+The following explains the parameters in the Endpoint Section:
+
+* proxy: This is the OpenNebula XML RPC endpoint to set to point to the OpenNebula or oZones server when 'onevm' commands are issued.
+
+* oneauth: This is the username:password to set in '.one_auth' to talk to the server.
+
+An endpoint can represent a zone within a oZones server, a specific OpenNebula server or a cluster within the OpenNebula instance. From Carina perspective, the endpoint represents a resource pool in which VMs related to an environment 
+are created. The endpoint is used to look up the network and image IDs in 
+the Template section, so they should be configured to reflect shared 
+network/storage pools. 
+
+The following explains the parameters in the Template Section:
+
+* file: This represents the OpenNebula VM template containing parameters passed to 'onevm create' command. Certain parameters enclosed by '%' are substituted
+by Carina with values that are resovled at deployment time (e.g cpu, memory,network, image ids, and context variables)  
+
+* cpu, memory: The CPU and MEMORY sizes of VMs created from the template
+
+* network_id, image_id: This is hash of network ids and image ids by endpoint  so that the same template can be used to create VMs across different endpoints. These should be setup carefully to reflect the VLANs and datastores for the service. 
+
+The following explains the parameters in the Environment Section:
 
 * type: a string allowing to classify different types of environments
 
