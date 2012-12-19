@@ -22,7 +22,7 @@ BACKEND=webfarm
 check_last_status()
 {
    if [ $? -ne 0 ]; then
-       wget $CARINA_IP/cgi-bin/updateappstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&status=MASTER_INIT_FAIL 2> /dev/null
+       wget http://$CARINA_IP/cgi-bin/updateappstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&status=MASTER_INIT_FAIL 2> /dev/null
        exit -1
    fi
 }
@@ -30,7 +30,7 @@ check_last_status()
 setup () {
    # Download and install the haproxy binary. Not needed if its already installed in image
    cd /usr/sbin
-   wget $CARINA_IP/downloads/haproxy
+   wget http://$CARINA_IP/downloads/haproxy
    check_last_status
    chmod +x haproxy
    mkdir -p /usr/share/haproxy
@@ -39,7 +39,7 @@ setup () {
    # Get a skeleton configuration file
    mkdir /etc/haproxy
    cd /etc/haproxy
-   wget $CARINA_IP/downloads/haproxy.cfg
+   wget http://$CARINA_IP/downloads/haproxy.cfg
    sed -i "s/%BALANCE_PORT%/$BALANCE_PORT/g" /etc/haproxy/haproxy.cfg
    check_last_status
    # So non-root user can update this
@@ -51,7 +51,7 @@ setup () {
 
    # Install the haproxyctl tool gotten from https://github.com/flores/haproxyctl.git
    cd /home/$DEFUSER
-   wget $CARINA_IP/downloads/haproxyctl.tar
+   wget http://$CARINA_IP/downloads/haproxyctl.tar
    check_last_status
    tar xvf /home/$DEFUSER/haproxyctl.tar
  
@@ -64,7 +64,7 @@ setup () {
    cp /mnt/haproxy.sh /home/$DEFUSER/haproxy.sh
 
    # Report that setup is complete
-   wget $CARINA_IP/cgi-bin/updateappstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&status=MASTER_INIT_DONE 2> /dev/null
+   wget http://$CARINA_IP/cgi-bin/updateappstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&status=MASTER_INIT_DONE 2> /dev/null
 }
 
 

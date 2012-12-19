@@ -41,7 +41,7 @@ setup() {
 
 
     # Report that setup is complete
-    wget $CARINA_IP/cgi-bin/updateappstatus.sh?vmid=$VMID\&envid=$ENVID\&status=MASTER_INIT_DONE 2> /dev/null
+    wget http://$CARINA_IP/cgi-bin/updateappstatus.sh?vmid=$VMID\&envid=$ENVID\&status=MASTER_INIT_DONE 2> /dev/null
 }
 
 OPER=$1

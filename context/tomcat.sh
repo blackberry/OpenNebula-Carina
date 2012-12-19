@@ -27,9 +27,9 @@ fi
 
 CATALINA_HOME=/var/lib/tomcat6
 cd $CATALINA_HOME/webapps
-wget $CARINA_IP/downloads/$APP_PACKAGE
+wget http://$CARINA_IP/downloads/$APP_PACKAGE
 
 /etc/init.d/tomcat6 start
 
-wget $CARINA_IP/cgi-bin/updateappstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&status=SLAVE_"$SLAVE_ID"_INIT_DONE 2> /dev/null
+wget http://$CARINA_IP/cgi-bin/updateappstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&status=SLAVE_"$SLAVE_ID"_INIT_DONE 2> /dev/null
 

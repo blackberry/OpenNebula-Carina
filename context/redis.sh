@@ -33,9 +33,9 @@ fi
 setup ()
 {
     cd $HOME
-    wget $CARINA_IP/downloads/$REDIS_PACKAGE.gz
+    wget http://$CARINA_IP/downloads/$REDIS_PACKAGE.gz
     if [ $? -ne 0 ]; then
-        wget $CARINA_IP/cgi-bin/updateappstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&status=MASTER_PKG_NOTFOUND 2> /dev/null
+        wget http://$CARINA_IP/cgi-bin/updateappstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&status=MASTER_PKG_NOTFOUND 2> /dev/null
     fi
     gunzip $HOME/$REDIS_PACKAGE.gz
     tar xvf $HOME/$REDIS_PACKAGE 
@@ -45,7 +45,7 @@ setup ()
     cp /mnt/context.sh /home/$DEFUSER/context.sh
     cp /mnt/redis.sh /home/$DEFUSER/redis.sh
 
-    wget $CARINA_IP/cgi-bin/updateappstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&status=MASTER_INIT_DONE 2> /dev/null
+    wget http://$CARINA_IP/cgi-bin/updateappstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&status=MASTER_INIT_DONE 2> /dev/null
 
 }
 

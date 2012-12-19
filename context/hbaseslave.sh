@@ -35,7 +35,7 @@ yes | apt-get install hadoop-0.20-datanode
 yes | apt-get install hadoop-hbase-regionserver 
 
 cd /usr/local/share
-wget $CARINA_IP/downloads/jdk-6u27-linux-x64.bin  
+wget http://$CARINA_IP/downloads/jdk-6u27-linux-x64.bin  
 chmod +x ./jdk-6u27-linux-x64.bin
 yes | ./jdk-6u27-linux-x64.bin
 

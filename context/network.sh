@@ -38,4 +38,4 @@ EOF
 #Allow ssh traffic in
 iptables -I INPUT -p tcp --dport 22 -j ACCEPT
 
-wget $CARINA_IP/cgi-bin/updatevmstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&newip=$IP\&name=$HOSTNAME 2> /dev/null
+wget http://$CARINA_IP/cgi-bin/updatevmstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&newip=$IP\&name=$HOSTNAME 2> /dev/null

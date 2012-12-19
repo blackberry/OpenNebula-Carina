@@ -89,5 +89,5 @@ fi
 
 echo "Updating ONE DB: ENVID=" $ENVID "VMID=" $VMID " OLDIP=" $IP_PUBLIC " NEWIP=" $NEW_IP >> /tmp/dhcpnetwork.sh.log
 
-wget $CARINA_IP/cgi-bin/updatevmstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&newip=$NEW_IP\&name=$TARGET_HOSTNAME 2> /dev/null
+wget http://$CARINA_IP/cgi-bin/updatevmstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&newip=$NEW_IP\&name=$TARGET_HOSTNAME 2> /dev/null
 

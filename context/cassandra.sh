@@ -41,11 +41,11 @@ calctoken() {
 
 reportstatus() {
     if [ -z "${SLAVE_ID+x}"  ]; then
-        wget $CARINA_IP/cgi-bin/updateappstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&status=MASTER_INIT_DONE 2> /dev/null
+        wget http://$CARINA_IP/cgi-bin/updateappstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&status=MASTER_INIT_DONE 2> /dev/null
         cp /mnt/context.sh /home/$DEFUSER/context.sh
         cp /mnt/cassandra.sh /home/$DEFUSER/cassandra.sh
     else
-       wget $CARINA_IP/cgi-bin/updateappstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&status=SLAVE_"$SLAVE_ID"_INIT_DONE 2> /dev/null
+       wget http://$CARINA_IP/cgi-bin/updateappstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&status=SLAVE_"$SLAVE_ID"_INIT_DONE 2> /dev/null
    fi
 }
 
@@ -86,7 +86,7 @@ fi
 OPER=$1
 
 if [ -z "${MOUNTLIST+x}"  ]; then
-    wget $CARINA_IP/cgi-bin/updateappstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&status=MASTER_INIT_FAIL:MOUNTLIST_MISSING 2> /dev/null
+    wget http://$CARINA_IP/cgi-bin/updateappstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&status=MASTER_INIT_FAIL:MOUNTLIST_MISSING 2> /dev/null
     exit
 fi
 

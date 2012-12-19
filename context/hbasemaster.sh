@@ -28,15 +28,15 @@ fi
 
 setupmaster () {
     echo "Starting HBase master install "  >>  $LOGFILE
-    wget $CARINA_IP/cgi-bin/updateappstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&status=APP_INSTALL_START 2> /dev/null
+    wget http://$CARINA_IP/cgi-bin/updateappstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&status=APP_INSTALL_START 2> /dev/null
 
     yes | apt-get install curl 
     curl -s http://archive.cloudera.com/debian/archive.key | sudo apt-key add -
 
     # Install Java
     cd /usr/local/share
-    wget $CARINA_IP/cgi-bin/updateappstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&status=JDK_INSTALL_START 2> /dev/null
-    wget $CARINA_IP/downloads/jdk-6u27-linux-x64.bin  
+    wget http://$CARINA_IP/cgi-bin/updateappstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&status=JDK_INSTALL_START 2> /dev/null
+    wget http://$CARINA_IP/downloads/jdk-6u27-linux-x64.bin  
     chmod +x ./jdk-6u27-linux-x64.bin
     yes | ./jdk-6u27-linux-x64.bin
 
@@ -45,7 +45,7 @@ deb http://archive.cloudera.com/debian maverick-cdh3 contrib
 deb-src  http://archive.cloudera.com/debian maverick-cdh3 contrib
 EOF
 
-    wget $CARINA_IP/cgi-bin/updateappstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&status=HBASE_INSTALL_START 2> /dev/null
+    wget http://$CARINA_IP/cgi-bin/updateappstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&status=HBASE_INSTALL_START 2> /dev/null
     apt-get update
     yes | apt-get install hadoop-0.20-namenode 
     yes | apt-get install hadoop-0.20-datanode 
@@ -59,7 +59,7 @@ export JAVA_HOME=/usr/local/share/jdk1.6.0_27/
 export PATH=$JAVA_HOME/bin:$PATH
 EOF
 
-    wget $CARINA_IP/cgi-bin/updateappstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&status=HBASE_CONFIG_START 2> /dev/null
+    wget http://$CARINA_IP/cgi-bin/updateappstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&status=HBASE_CONFIG_START 2> /dev/null
     mkdir -p /var/lib/hadoop-0.20/cache/hadoop/dfs/name
     cd /var/lib
     chgrp -R hadoop hadoop-0.20
@@ -81,13 +81,13 @@ EOF
 cd $HADOOP_CONF
 mv core-site.xml core-site.xml.bak
 mv hdfs-site.xml hdfs-site.xml.bak
-wget $CARINA_IP/downloads/core-site.xml 
-wget $CARINA_IP/downloads/hdfs-site.xml 
+wget http://$CARINA_IP/downloads/core-site.xml 
+wget http://$CARINA_IP/downloads/hdfs-site.xml 
 sed -i -e "s/%HBASE_MASTER_NAME/$MASTER/g" core-site.xml 
 
 cd $HBASE_CONF
 mv hbase-site.xml  hbase-site.xml.bak
-wget $CARINA_IP/downloads/hbase-site.xml 
+wget http://$CARINA_IP/downloads/hbase-site.xml 
 sed -i -e "s/%HBASE_MASTER_NAME/$MASTER/g" hbase-site.xml 
 
 # To allow slaves to download my config files (assume web server installed)
@@ -108,12 +108,12 @@ chmod 0666 /usr/lib/hadoop-0.20/conf/slaves
 chmod 0666 /usr/lib/hbase/conf/regionservers
 
 
-wget $CARINA_IP/cgi-bin/updateappstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&status=HBASE_DBFORMAT_START 2> /dev/null
+wget http://$CARINA_IP/cgi-bin/updateappstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&status=HBASE_DBFORMAT_START 2> /dev/null
 # Format the namenode
 /bin/su hdfs -c "echo Y | /usr/lib/hadoop/bin/hadoop namenode -format"
 
 # Bring up the HDFS layer
-wget $CARINA_IP/cgi-bin/updateappstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&status=HADOOP_SVCS_START 2> /dev/null
+wget http://$CARINA_IP/cgi-bin/updateappstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&status=HADOOP_SVCS_START 2> /dev/null
 /usr/lib/zookeeper/bin/zkServer.sh start
 /etc/init.d/hadoop-0.20-datanode start
 /etc/init.d/hadoop-0.20-namenode start
@@ -124,7 +124,7 @@ sleep 30
 # Set up directories/permissiosn for HBase 
 /bin/su hdfs -c "/usr/lib/hadoop/bin/hadoop fs -mkdir /hbase"
 /bin/su hdfs -c "/usr/lib/hadoop/bin/hadoop fs -chown hbase /hbase"
-wget $CARINA_IP/cgi-bin/updateappstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&status=HBASE_SVCS_START 2> /dev/null
+wget http://$CARINA_IP/cgi-bin/updateappstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&status=HBASE_SVCS_START 2> /dev/null
 
 /etc/init.d/hadoop-hbase-regionserver start
 /etc/init.d/hadoop-hbase-master start
@@ -133,7 +133,7 @@ wget $CARINA_IP/cgi-bin/updateappstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&en
 cp /mnt/context.sh /home/$DEFUSER/context.sh
 cp /mnt/hbasemaster.sh /home/$DEFUSER/hbasemaster.sh
 
-wget $CARINA_IP/cgi-bin/updateappstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&status=MASTER_INIT_DONE 2> /dev/null
+wget http://$CARINA_IP/cgi-bin/updateappstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&status=MASTER_INIT_DONE 2> /dev/null
 
 
 

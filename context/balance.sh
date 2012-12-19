@@ -17,7 +17,7 @@
 
 setup () {
    cd /usr/sbin
-   wget $CARINA_IP/downloads/balance
+   wget http://$CARINA_IP/downloads/balance
    chmod +x balance
    mkdir -m 01777 /var/run/balance
    /bin/su -c "balance -b $LOCAL_IP $BALANCE_PORT" $DEFUSER
@@ -25,7 +25,7 @@ setup () {
    cp /mnt/context.sh /home/$DEFUSER/context.sh
    cp /mnt/balance.sh /home/$DEFUSER/balance.sh
    # Report that setup is complete
-   wget $CARINA_IP/cgi-bin/updateappstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&status=MASTER_INIT_DONE 2> /dev/null
+   wget http://$CARINA_IP/cgi-bin/updateappstatus.sh?service=$SERVICE_NAME\&vmid=$VMID\&envid=$ENVID\&status=MASTER_INIT_DONE 2> /dev/null
 }
 
 
