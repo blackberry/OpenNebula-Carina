@@ -22,7 +22,7 @@ getsvcid() {
 
 getvmip() {
    if [[ $USE_DDNS == "FALSE" ]]; then
-     IP=`onecmd -e $ENDPOINT onevm show $1  | grep IP | tr '=' ' ' | tr  ',' ' ' | awk 'END {print $2}'`
+     IP=`onecmd -e $ENDPOINT onevm show $1  | grep IP | tr '=' ' ' | tr  ',' ' ' | awk 'END {print $2}' | tr -d \"`
      echo $IP
      return
    fi
