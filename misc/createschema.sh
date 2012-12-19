@@ -15,7 +15,7 @@
 # limitations under the License.                                             #
 #--------------------------------------------------------------------------- #
 
-. ../etc/system.conf
+. $ONE_LOCATION/opennebula-carina/etc/system.conf
 USER=root
 HOST=$DB_HOST
 PASS=$DB_PASS
