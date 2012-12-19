@@ -1,7 +1,7 @@
 
 This document describes the process to setup of the Carina Environment 
 Manager for an OpenNebula installation. It is assumed you have OpenNebula
-installed and configured and can startup VMs in it. Carina can be installed
+installed and configured and can startup individual VMs in it and execute contextualization scripts within the VMs [1]. Carina can be installed
 on a bare VM containing only the OS or it can be installed from a VM
 applicance that pre-installs all the dependencies.  For additional background on
 requirements and  Carina architecture see the blog entry at http://blog.opennebula.org/?p=3509.
@@ -186,3 +186,5 @@ template do the following:
 * Start up scheduler daemon /var/lib/one/opennebula-carina/misc/start-oneenvd-gs.sh (start the oneenvd for that service)
 * Start up per-service oneenvd daemon /var/lib/one/opennebula-carina/misc/start-oneenvd.sh (do this for each service account)
 
+
+[1] In OpenNebula 3.6, you may have to modify your system datastore transport manager (eg. $ONE_LOCATION/var/remotes/tm/qcow2/context) to set execute permissions on context scripts.
