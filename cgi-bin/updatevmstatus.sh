@@ -27,9 +27,10 @@ SERVICE_NAME=`echo "$QUERY_STRING" | grep -oE "(^|[?&])service=[^&]+" | sed "s/%
 echo "Updating VMID = " $VMID "Envid = " $ENVID "NEWIP = " $NEW_IP "HOSTNAME=" $HOSTNAME >> $LOGFILE
 
 USER=root
-DB_HOST=127.0.0.1
-DB_PASS=
 DB=opennebula
+ONE_LOCATION=/var/lib/one
+.  $ONE_LOCATION/opennebula-carina/etc/system.conf
+
 
 VMTABLE="vm_pool_ext"
 APPENVTABLE="app_environment"
