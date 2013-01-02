@@ -125,8 +125,7 @@ H. Create an OS account "carina"  on the management VM that will run the
    * cp /var/lib/one/opennebula-carina/etc/config.rb $HOME/config.rb
     (edit the config.rb to set the appropriate endpoints and templates)
    * Edit the global.rb to reflect the resource pools and services that will be in the system
-
-   *  /var/lib/one/opennebula-carina/misc/start-oneenvd-gs.sh (start the global scheduler)
+   * /var/lib/one/opennebula-carina/misc/start-oneenvd-gs.sh (start the global scheduler)
    * /var/lib/one/opennebula-carina/misc/start-oneenvd.sh (start the oneenvd)
 
 
@@ -135,7 +134,8 @@ information.
 
 I. Each service that will use the system should have an OS account on the
 management VM. This account will be used to run the oneenvd that can be 
-accessed from the corresponding account on the OpenNebula server.
+accessed from the corresponding account on the OpenNebula server. The following
+describes the steps:
 
    * sudo useradd -d /home/svc -m svc
    * /bin/su svc
@@ -144,9 +144,8 @@ accessed from the corresponding account on the OpenNebula server.
    * Change the CARINA_PORT to be unique for each service and set the CARINA_IP to point to Carina VM. 
    * Set the SERVICE_NAME parameter to reflect the service
    * Set LOAD_VM_INFO=false 
+   * Set the ZONE parameter to reflect the which zone this oneenvd manages. Zonemust match the 'zone' parameter of a shared pool defined in global.rb.
    * cp /var/lib/one/opennebula-carina/etc/config.rb $HOME/config.rb
-    (edit the config.rb to set the appropriate service-specific endpoints and 
-    templates)
    *  Generate ssh keys for each service and copy into /var/www/repo/<service>/context (these will be copied into the service's VM and then later used when doing a passwordless ssh into the VM)
 
 ~~~
@@ -155,9 +154,12 @@ accessed from the corresponding account on the OpenNebula server.
 ~~~
 
    *  /var/lib/one/opennebula-carina/misc/createschema.sh svc
-   *  cp /var/lib/one/opennebula-carina/context/*  /var/www/repo/svc/context (optional if you want to use the sample contextualization scripts)
-   * setup /var/www/downloads to hold common packages/binaries that are 
-   accessed by the sample contextualization scripts if required
+
+The above steps can be automated by executing 'misc/addsvc.sh service_name service_port zone'. The following steps are manual:
+
+   * Setup /var/www/downloads to hold common packages/binaries that are required by sample the contextualization scripts (optional)
+   * Edit the service's config.rb to set the appropriate service-specific endpoints. Before a service can use the system to upload their own config.rb, the admin must setup an endpoint which matches the username/password that the service will use. 
+   * Add the service to /var/lib/one/opennebula-carina/etc/global.rb 
    * /var/lib/one/opennebula-carina/misc/start-oneenvd.sh (start the oneenvd for that service)
 
 VM APPLIANCE INSTALL
