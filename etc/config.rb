@@ -337,4 +337,28 @@ ENVIRONMENT = {
                 :dependencies => { 'tomcat_ha_passive' => ['tomcat_ha_active']}
         },
 
+        'mysql-ha' => {
+                :type => "data",
+                :endpoint => "mm01",
+                :description => "Standalone MySQL node",
+                :master_template   => "mysql",
+                :master_context_script =>  "mysqlsetup.sh",
+                :master_setup_time => 30,
+			:master_context_var => "\"NFSDATA=1.1.1.1:\\/vol\\/data1, LOGMNT=1.1.1.1:\\/vol\\/data2, CONFIGMNT=1.1.1.1:\\/vol\\/data3, TRANLOG=1.1.1.1:\\/vol\\/data4\"",
+			:slave_template    => "mysql",
+			:slave_context_script => "mysqlsetup.sh",
+			:slave_context_var => "\"NFSDATA=1.1.1.1:\\/vol\\/data1, LOGMNT=1.1.1.1:\\/vol\\/data2, CONFIGMNT=1.1.1.1:\\/vol\\/data3, TRANLOG=1.1.1.1:\\/vol\\/data4\"",
+                :placement_policy  => "pack",
+                :availability_policy => {
+                                         :period => 5,
+                                         :metric_plugins => ['VMStatus', 'MySqlHealth'],
+                                         :recreate_expr => "m.mysqlHealth < 1 || m.nummissing > 0"
+                                       },
+                :num_slaves        => 0,
+                :slavedata         => "8080",
+                :adminuser         => "carina",
+                :app_url           => "jdbc://%MASTER%/"
+          },
+
+
 }

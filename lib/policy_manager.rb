@@ -247,6 +247,17 @@ class PolicyManager
         env.info "AVAIL_POLICY_STATUS: Environment delcared as ACTIVE but failover environment missing"
     end
 
+    private
+    def getTargetVM(vmList, mastervmid)
+        mastervmfailed=false
+        targetvm = nil
+        vmList.each { |vm|
+             targetvm = vm if vm.status == "MISSING" || vm.status == "UNKNOWN" || vm.status == "FAILED" || vm.status == "SICK"
+             mastervmfailed = true if vm.vmid == mastervmid && (vm.status== "MISSING"  || vm.status == "UNKNOWN" || vm.status == "FAILED" || vm.status == "SICK" )
+        }
+        targetvm == mastervmid if mastervmfailed == true
+        return targetvm
+    end
 
     private
     def evalavailabilitypolicy(env, policy)
@@ -268,34 +279,47 @@ class PolicyManager
                  nummissing += 1 if vm.status == "MISSING"
                  numunknown += 1 if vm.status == "UNKNOWN"
                  numfailed += 1    if vm.status == "FAILED"
-                 targetvm = vm if vm.status == "MISSING" || vm.status == "UNKNOWN" || vm.status == "FAILED"
-                 mastervmfailed = true if vm.vmid == env.mastervmid && (vm.status== "MISSING"  || vm.status == "UNKNOWN" || vm.status == "FAILED")
+                 targetvm = vm if vm.status == "MISSING" || vm.status == "UNKNOWN" || vm.status == "FAILED" || vm.status == "SICK"
+                 mastervmfailed = true if vm.vmid == env.mastervmid && (vm.status== "MISSING"  || vm.status == "UNKNOWN" || vm.status == "FAILED" || vm.status == "SICK" )
              end
         }
         # Make sure to restart master first before any slaves
         targetvm == env.mastervmid if mastervmfailed == true
         # Check if we should be re-creating any VMs 
         if policy[:recreate_expr] != nil
-            recreate_result = eval(policy[:recreate_expr])
+            if policy[:metric_plugins] != nil
+                 recreate_result = @pluginManager.evaluateExpr( policy[:metric_plugins], policy[:recreate_expr], env.envid)
+            else
+                 recreate_result = eval(policy[:recreate_expr])
+            end
             @recreateCounter[env.envid] = "0" if @recreateCounter[env.envid] == nil
             if recreate_result == true
                 newval = @recreateCounter[env.envid].to_i + 1
                 @recreateCounter[env.envid] = newval.to_s
                 if newval > policy[:period]
+                    targetvm = getTargetVM(vmList, env.mastervmid)
                     if $jobManager.isJobRunning(env.envid) == false
-                        env.info = "AVAIL_POLICY_STATUS: Recreating VM #{targetvm.vmid}"
-                        env.recreateVM(targetvm)
+                        if targetvm != nil
+                            env.info = "AVAIL_POLICY_STATUS: Recreating VM #{targetvm.vmid}"
+                            env.recreateVM(targetvm)
+                        else
+                            env.info = "AVAIL_POLICY_STATUS: Policy condition triggered but could not identify target VM to recreate"
+                        end
                         @recreateCounter[env.envid] = "0"
                     end
                 else
-                    env.info = "AVAIL_POLICY_STATUS: Detected missing VM counter=#{@recreateCounter[env.envid]} period=#{policy[:period]}"
+                    env.info = "AVAIL_POLICY_STATUS: Detected missing or unhealthy VM counter=#{@recreateCounter[env.envid]} period=#{policy[:period]}"
                 end
             end
          end
          # Determine if the entire environment should be considered as failed 
          if policy[:failover_expr] != nil  && env.policy_status == "ACTIVE"
              if policy[:failover_role] == "active" 
-                failover_result = eval(policy[:failover_expr])
+                if policy[:metric_plugins] != nil
+                    failover_result = @pluginManager.evaluateExpr( policy[:metric_plugins], policy[:failover_expr], env.envid)
+                else
+                    failover_result = eval(policy[:failover_expr])
+                end
                 @failoverCounter[env.envid] = "0" if @failoverCounter[env.envid] == nil
                 if failover_result == true 
                     newval = @failoverCounter[env.envid].to_i + 1
@@ -312,7 +336,11 @@ class PolicyManager
 
          # Determine if the entire environment should failed back 
          if policy[:failback_expr] != nil  && policy[:failover_role] == "active" && env.policy_status == "FAILED"
-             failback_result = eval(policy[:failback_expr])
+             if policy[:metric_plugins] != nil
+                 failback_result = @pluginManager.evaluateExpr( policy[:metric_plugins], policy[:failback_expr], env.envid)
+             else
+                 failback_result = eval(policy[:failback_expr])
+             end
              @failbackCounter[env.envid] = "0" if @failbackCounter[env.envid] == nil
              if failback_result == true 
                  newval = @failbackCounter[env.envid].to_i + 1

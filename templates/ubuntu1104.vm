@@ -22,7 +22,7 @@ CONTEXT        = [
   SERVICE_NAME=%SERVICE_NAME%,
   %APP_CONTEXT_VAR%,
   VMID=$VMID,
-  DEFUSER=rimadmin,
+  DEFUSER=%ADMIN_USER%,
   HOSTNAME     = "$NAME",
   IP           = "$NIC[IP]",
   NETMASK      = "$NETWORK[NETMASK,     NETWORK_ID=%NETWORK_ID%]",
