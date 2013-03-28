@@ -128,10 +128,7 @@ class EnvConfigs
          Kernel::load file
          ENDPOINT.each_key do |k|
              auth = ENDPOINT[k][:oneauth]
-             # auth is of the form 'flm01-oneenv1:passwd'  and we just want 'oneenv1' to match against OS
-             # account we are running under 
              name = auth.split(":",2).first
-             name = name.split("-",2).last
              if name != ENV["USER"]
                  $Logger.error "User attempting to upload invalid config.rb with user name of #{name} instead of #{ENV["USER"]}  for this service"
                  return false
